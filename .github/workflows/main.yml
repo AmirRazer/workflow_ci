@@ -28,14 +28,14 @@ jobs:
         MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
       run: |
         # Masuk ke folder MLProject
-        cd Workflow-CI/MLProject
+        cd MLProject
         # Jalankan project
         mlflow run . --no-conda
     
     - name: Read Run ID
       id: get_run_id
       run: |
-        cd Workflow-CI/MLProject
+        cd MLProject
         # Ambil Run ID dari file txt yang dibuat modelling.py
         echo "RUN_ID=$(cat run_id.txt)" >> $GITHUB_ENV
 
@@ -53,7 +53,7 @@ jobs:
       run: |
         echo "Building Docker for Run ID: ${{ env.RUN_ID }}"
         
-        # --- PERINTAH INI ADALAH SYARAT ADVANCE (4 POIN) ---
+        
         # Membuat Docker Image langsung dari model MLflow
         mlflow models build-docker \
           -m "runs:/${{ env.RUN_ID }}/model" \

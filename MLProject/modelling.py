@@ -21,7 +21,7 @@ y_test = X_test.pop('Status')
 # --- 3. TRAINING & LOGGING ---
 mlflow.set_experiment("Proyek_Akhir_CI_CD")
 
-with mlflow.start_run(run_name="CI_CD_Auto_Hybrid") as run:
+with mlflow.start_run(run_name="CI_CD_Auto_git") as run:
     
     # [PENTING] Simpan Run ID ke file agar GitHub Actions bisa membacanya
     run_id = run.info.run_id
