@@ -2,6 +2,7 @@ import pandas as pd
 import mlflow
 import dagshub
 import joblib 
+import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.ensemble import GradientBoostingClassifier
@@ -9,8 +10,14 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score, confusion_matrix
 
 # --- 1. KONFIGURASI DAGSHUB ---
-dagshub.init(repo_owner='amirmahmoed003', repo_name='proyek_akhir_msml_amir', mlflow=True)
 
+# Logika: Jika MLFLOW_TRACKING_URI sudah ada (diset oleh GitHub Actions),
+# maka JANGAN jalankan dagshub.init (karena akan memicu login browser yang error).
+if not os.getenv("MLFLOW_TRACKING_URI"):
+    print("Berjalan Lokal: Melakukan inisialisasi DagsHub...")
+    dagshub.init(repo_owner='amirmahmoed003', repo_name='proyek_akhir_msml_amir', mlflow=True)
+else:
+    print("Berjalan di CI/CD: Menggunakan Environment Variables (Skip dagshub.init manual)")
 # --- 2. LOAD DATA ---
 X_train = pd.read_csv('train_data_processed.csv')
 X_test = pd.read_csv('test_data_processed.csv')
