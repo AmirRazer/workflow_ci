@@ -32,7 +32,7 @@ jobs:
         # Masuk ke folder MLProject
         cd MLProject
         # Jalankan project
-        mlflow run . --no-conda
+        mlflow run . --env-manager=local
     
     - name: Read Run ID
       id: get_run_id
