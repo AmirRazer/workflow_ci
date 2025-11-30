@@ -1,0 +1,14 @@
+name: proyek_msml
+channels:
+  - defaults
+dependencies:
+  - python=3.12.7
+  - pip
+  - pip:
+    - pandas
+    - scikit-learn
+    - mlflow
+    - dagshub
+    - joblib
+    - matplotlib
+    - seaborn

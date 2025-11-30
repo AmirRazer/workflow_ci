@@ -1,0 +1,7 @@
+name: Proyek_Akhir_Amir
+
+conda_env: conda.yaml
+
+entry_points:
+  main:
+    command: "python modelling.py"
