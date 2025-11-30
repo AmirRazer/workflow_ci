@@ -2,48 +2,68 @@ import pandas as pd
 import mlflow
 import dagshub
 import joblib 
-import os
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score, confusion_matrix
 
-# --- 1. KONFIGURASI DAGSHUB ---
+# --- 1. KONFIGURASI OTOMATIS 
 
-# Logika: Jika MLFLOW_TRACKING_URI sudah ada (diset oleh GitHub Actions),
-# maka JANGAN jalankan dagshub.init (karena akan memicu login browser yang error).
-if not os.getenv("MLFLOW_TRACKING_URI"):
-    print("Berjalan Lokal: Melakukan inisialisasi DagsHub...")
-    dagshub.init(repo_owner='amirmahmoed003', repo_name='proyek_akhir_msml_amir', mlflow=True)
+# Cek apakah script berjalan di GitHub Actions (CI/CD)?
+in_ci_cd = os.getenv("MLFLOW_TRACKING_URI") is not None
+
+if in_ci_cd:
+    print("Mode: CI/CD (GitHub Actions)")
+    print("Menggunakan Token & URI dari Environment Variables.")
+    # TIDAK perlu dagshub.init karena sudah diset di main.yml
+    
+    # Saat di CI/CD, MLflow sudah membuatkan Run otomatis.
+    # cukup 'attach' (nempel) ke run tersebut tanpa memberi nama baru.
+    run_context = mlflow.start_run() 
+    
 else:
-    print("Berjalan di CI/CD: Menggunakan Environment Variables (Skip dagshub.init manual)")
+    print("Mode: Lokal (Laptop)")
+    print("Melakukan inisialisasi DagsHub manual...")
+    dagshub.init(repo_owner='amirmahmoed003', repo_name='proyek_akhir_msml_amir', mlflow=True)
+    
+    # Jika di laptop,  perlu set nama experiment dan run sendiri
+    mlflow.set_experiment("Proyek_Akhir_CI_CD")
+    run_context = mlflow.start_run(run_name="Manual_Run_Lokal")
+
 # --- 2. LOAD DATA ---
-X_train = pd.read_csv('train_data_processed.csv')
-X_test = pd.read_csv('test_data_processed.csv')
+try:
+    # Coba baca langsung (untuk struktur MLProject)
+    X_train = pd.read_csv('train_data_processed.csv')
+    X_test = pd.read_csv('test_data_processed.csv')
+except FileNotFoundError:
+    # Fallback path (jika dijalankan dari folder lain)
+    X_train = pd.read_csv('../train_data_processed.csv')
+    X_test = pd.read_csv('../test_data_processed.csv')
 
 y_train = X_train.pop('Status')
 y_test = X_test.pop('Status')
 
-# --- 3. TRAINING & LOGGING ---
-mlflow.set_experiment("Proyek_Akhir_CI_CD")
-
-with mlflow.start_run(run_name="CI_CD_Auto_git") as run:
+# --- 3. TRAINING DALAM CONTEXT RUN ---
+# 'with run_context' akan otomatis memakai Run yang benar (baik dari GitHub maupun Lokal)
+with run_context as run:
     
-    # [PENTING] Simpan Run ID ke file agar GitHub Actions bisa membacanya
+    # Simpan Run ID ke file 
     run_id = run.info.run_id
     with open("run_id.txt", "w") as f:
         f.write(run_id)
+        
+    print(f"Run ID Aktif: {run_id}")
     
     # === BAGIAN AUTO ===
     print("Mengaktifkan Autolog...")
-    # Kita matikan log_models di autolog agar tidak bentrok, kita log manual di bawah
     mlflow.sklearn.autolog(log_models=False, exclusive=False)
     
     # Definisi Grid Search
     param_grid = {
         'n_estimators': [50, 100],     
-        'learning_rate': [0.1], # Dikurangi biar cepat di GitHub Actions 
+        'learning_rate': [0.1], 
         'max_depth': [3]             
     }
     
@@ -60,15 +80,14 @@ with mlflow.start_run(run_name="CI_CD_Auto_git") as run:
     
     print(f"Akurasi Terbaik: {acc}")
 
-    # 1. Log Metric Manual
+    # Log Metric Manual
     mlflow.log_metric("accuracy_manual", acc)
     
-    # 2. Log Model Standar 
-   
-    print("Logging Model untuk Docker...")
+    # Log Model Standar (WAJIB ADA untuk Docker)
+    print("Logging Model...")
     mlflow.sklearn.log_model(best_model, "model")
     
-    # 3. Artefak Visualisasi
+    # Artefak Visualisasi
     plt.figure(figsize=(8, 6))
     cm = confusion_matrix(y_test, y_pred)
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
