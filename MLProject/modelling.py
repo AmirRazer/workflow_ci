@@ -5,9 +5,9 @@ import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-import shutil # <--- TAMBAHAN PENTING
+import shutil
+import time
 from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score, confusion_matrix
 
 # --- 1. KONFIGURASI OTOMATIS ---
@@ -15,13 +15,14 @@ in_ci_cd = os.getenv("MLFLOW_TRACKING_URI") is not None
 
 if in_ci_cd:
     print("Mode: CI/CD (GitHub Actions)")
-    # Attach ke run yang sudah dibuat oleh GitHub Actions
+    # Attach ke run yang dibuat GitHub Actions
     run_context = mlflow.start_run() 
 else:
     print("Mode: Lokal (Laptop)")
     dagshub.init(repo_owner='amirmahmoed003', repo_name='proyek_akhir_msml_amir', mlflow=True)
     mlflow.set_experiment("Proyek_Akhir_CI_CD")
-    run_context = mlflow.start_run(run_name="Manual_Run_Lokal")
+    # Nama run lokal
+    run_context = mlflow.start_run(run_name="Run_Lokal_Laptop")
 
 # --- 2. LOAD DATA ---
 try:
@@ -34,66 +35,73 @@ except FileNotFoundError:
 y_train = X_train.pop('Status')
 y_test = X_test.pop('Status')
 
-# --- 3. TRAINING ---
+# --- 3. TRAINING (CEPAT & TANPA GRIDSEARCH) ---
 with run_context as run:
     
-    # Simpan Run ID (Penting untuk Docker)
+    # [FIX NAMA RUN] Paksa ubah nama run agar terbaca jelas di DagsHub
+    # Ini akan menimpa nama aneh seperti 'tasteful-cub-...'
+    mlflow.set_tag("mlflow.runName", "CI_CD_Model_Final")
+    
+    # Simpan Run ID (Wajib untuk Docker)
     run_id = run.info.run_id
     with open("run_id.txt", "w") as f:
         f.write(run_id)
         
-    print(f"Run ID Aktif: {run_id}")
+    print(f"Run ID: {run_id} | Nama Run: CI_CD_Model_Final")
     
-    # Matikan log_models otomatis agar tidak error unsupported endpoint
-    print("Mengaktifkan Autolog (Tanpa Model)...")
-    mlflow.sklearn.autolog(log_models=False, exclusive=False)
+    # Matikan Autolog (Biar tidak error 500)
+    print("Autolog dimatikan (Manual Log Only)...")
     
-    # Training
-    param_grid = {
-        'n_estimators': [50, 100],     
-        'learning_rate': [0.1], 
-        'max_depth': [3]             
-    }
+    # --- DEFINISI MODEL LANGSUNG (Tanpa GridSearch) ---
+    # Kita pakai parameter yang umum saja biar cepat
+    print("Melatih model Gradient Boosting (Single Model)...")
+    model = GradientBoostingClassifier(
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=3,
+        random_state=42
+    )
     
-    gb = GradientBoostingClassifier(random_state=42)
-    grid_search = GridSearchCV(estimator=gb, param_grid=param_grid, cv=3, n_jobs=-1, verbose=1)
-    
-    print("Memulai Training...")
-    grid_search.fit(X_train, y_train)
+    # Training cepat (cuma 1x proses)
+    model.fit(X_train, y_train)
     
     # Evaluasi
-    best_model = grid_search.best_estimator_
-    y_pred = best_model.predict(X_test)
+    y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     
-    print(f"Akurasi Terbaik: {acc}")
-    mlflow.log_metric("accuracy_manual", acc)
+    print(f"Akurasi: {acc}")
     
-    # --- SOLUSI ERROR 'UNSUPPORTED ENDPOINT' ---
-    print("Menyimpan Model dengan Metode Workaround...")
+    # Log Parameter & Metric Manual
+    mlflow.log_params({"n_estimators": 100, "lr": 0.1, "depth": 3})
+    mlflow.log_metric("accuracy", acc)
     
-    # 1. Simpan model sebagai struktur MLflow di folder sementara LOKAL
+    # --- UPLOAD MODEL (WORKAROUND ANTI-ERROR) ---
+    print("Menyiapkan upload model...")
+    time.sleep(3) # Jeda sebentar
+    
+    # Simpan model struktur MLflow di lokal dulu
     local_model_path = "temp_model_dir"
     if os.path.exists(local_model_path):
         shutil.rmtree(local_model_path)
         
-    mlflow.sklearn.save_model(best_model, local_model_path)
+    mlflow.sklearn.save_model(model, local_model_path)
     
-    # 2. Upload folder tersebut sebagai ARTEFAK BIASA
-    # Ini membypass API endpoint log_model yang error di DagsHub
+    print("Mengupload Model ke DagsHub...")
+    # Upload folder model sebagai artefak
     mlflow.log_artifacts(local_model_path, artifact_path="model")
     
-    # 3. Hapus folder sementara
+    # Bersihkan folder lokal
     shutil.rmtree(local_model_path)
-    print("Model berhasil diupload sebagai Artefak MLflow.")
+    print("Model berhasil diupload.")
     
-    # --- Artefak Lain ---
+    # --- ARTEFAK VISUALISASI ---
     plt.figure(figsize=(8, 6))
     cm = confusion_matrix(y_test, y_pred)
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
     plt.title('Confusion Matrix')
     plt.savefig("confusion_matrix.png")
     plt.close()
+    
     mlflow.log_artifact("confusion_matrix.png")
 
-    print("Selesai! Run ID tersimpan.")
+    print("Selesai! Run ID tersimpan dan Nama Run sudah diperbaiki.")
