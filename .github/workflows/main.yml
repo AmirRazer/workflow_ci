@@ -17,7 +17,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.12.7'
+        python-version: '3.12'
 
     - name: Install Dependencies
       run: |
@@ -28,21 +28,10 @@ jobs:
         MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
         MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
         MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
-        MLFLOW_HTTP_REQUEST_MAX_RETRIES: 5
-        MLFLOW_HTTP_REQUEST_TIMEOUT: 120
       run: |
-        # Masuk ke folder MLProject
         cd MLProject
-        # Jalankan project
         mlflow run . --env-manager=local
     
-    - name: Read Run ID
-      id: get_run_id
-      run: |
-        cd MLProject
-        # Ambil Run ID dari file txt yang dibuat modelling.py
-        echo "RUN_ID=$(cat run_id.txt)" >> $GITHUB_ENV
-
     - name: Login to Docker Hub
       uses: docker/login-action@v2
       with:
@@ -55,14 +44,12 @@ jobs:
         MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
         MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
       run: |
-        echo "Building Docker for Run ID: ${{ env.RUN_ID }}"
+        # Build dari folder lokal 'final_model' yang dihasilkan modelling.py
+        cd MLProject
         
-        
-        # Membuat Docker Image langsung dari model MLflow
         mlflow models build-docker \
-          -m "runs:/${{ env.RUN_ID }}/model" \
+          -m "final_model" \
           -n "${{ secrets.DOCKER_USERNAME }}/proyek-akhir-msml:latest" \
           --enable-mlserver
         
-        # Upload ke Docker Hub
         docker push ${{ secrets.DOCKER_USERNAME }}/proyek-akhir-msml:latest
