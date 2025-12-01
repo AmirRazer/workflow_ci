@@ -10,6 +10,25 @@ import time
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix
 
+# --- FUNGSI UPLOAD TAHAN BANTING ---
+def upload_with_retry(local_file, artifact_path, max_retries=3):
+    """Mencoba upload file, jika gagal (Error 500), tunggu lalu coba lagi."""
+    for i in range(max_retries):
+        try:
+            print(f"Attempt {i+1}: Uploading {os.path.basename(local_file)}...")
+            mlflow.log_artifact(local_file, artifact_path=artifact_path)
+            print("Sukses.")
+            return # Keluar fungsi jika sukses
+        except Exception as e:
+            print(f"Gagal upload (Error: {str(e)})")
+            if i < max_retries - 1:
+                wait_time = 15 * (i + 1) # Tunggu 15s, lalu 30s...
+                print(f"Server sibuk. Menunggu {wait_time} detik sebelum retry...")
+                time.sleep(wait_time)
+            else:
+                print("Menyerah setelah 3x percobaan.")
+                raise e # Lemparkan error jika sudah mentok
+
 # --- 1. KONFIGURASI OTOMATIS ---
 in_ci_cd = os.getenv("MLFLOW_TRACKING_URI") is not None
 
@@ -64,43 +83,37 @@ with run_context as run:
     mlflow.log_metric("accuracy", acc)
     mlflow.log_params({"n_estimators": 100, "lr": 0.1, "depth": 3})
     
-    # --- STRATEGI UPLOAD CICIL (REVISI PATH) ---
+    # --- PROSES UPLOAD ---
     print("Menyiapkan model lokal...")
     local_model_path = "temp_model_dir"
     
     if os.path.exists(local_model_path):
         shutil.rmtree(local_model_path)
     
-    # Generate struktur model MLflow di lokal
     mlflow.sklearn.save_model(model, local_model_path)
     
-    print("Mulai mengupload file model satu per satu...")
+    print("Mulai mengupload file model dengan Smart Retry...")
     
-    # Loop upload dengan path y
     for root, dirs, files in os.walk(local_model_path):
         for filename in files:
             local_file = os.path.join(root, filename)
             
-            # Tentukan subfolder relatif
+            # Tentukan path tujuan
             relative_path = os.path.relpath(local_file, local_model_path)
             dir_name = os.path.dirname(relative_path)
             
-            # LOGIKA BARU: Pastikan tidak ada trailing slash
             if dir_name:
                 dest_path = os.path.join("model", dir_name)
             else:
-                dest_path = "model" # File di root langsung ke 'model'
+                dest_path = "model"
             
-            print(f"Mengupload: {filename} ke folder artifact '{dest_path}'...")
+            # PANGGIL FUNGSI RETRY DI SINI
+            upload_with_retry(local_file, dest_path)
             
-            mlflow.log_artifact(local_file, artifact_path=dest_path)
-            
-            # Jeda agar server tidak error 500
-            time.sleep(5) 
+            # Jeda standar antar file
+            time.sleep(5)
             
     print("Semua file model berhasil diupload!")
-    
-    # Bersihkan folder lokal
     shutil.rmtree(local_model_path)
     
     # --- ARTEFAK VISUALISASI ---
@@ -111,6 +124,6 @@ with run_context as run:
     plt.savefig("confusion_matrix.png")
     plt.close()
     
-    mlflow.log_artifact("confusion_matrix.png")
+    upload_with_retry("confusion_matrix.png", None)
 
     print("Selesai! CI/CD Sukses.")
