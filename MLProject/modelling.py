@@ -33,12 +33,12 @@ except FileNotFoundError:
 y_train = X_train.pop('Status')
 y_test = X_test.pop('Status')
 
-# --- 3. TRAINING & MANUAL SLOW UPLOAD ---
+# --- 3. TRAINING & UPLOAD ---
 with run_context as run:
     
     mlflow.set_tag("mlflow.runName", "CI_CD_Model_Final")
     
-    # Simpan Run ID (Wajib untuk Docker)
+    # Simpan Run ID
     run_id = run.info.run_id
     with open("run_id.txt", "w") as f:
         f.write(run_id)
@@ -64,40 +64,38 @@ with run_context as run:
     mlflow.log_metric("accuracy", acc)
     mlflow.log_params({"n_estimators": 100, "lr": 0.1, "depth": 3})
     
-    # --- STRATEGI UPLOAD "CICIL" (ANTI ERROR 500) ---
+    # --- STRATEGI UPLOAD CICIL (REVISI PATH) ---
     print("Menyiapkan model lokal...")
     local_model_path = "temp_model_dir"
     
-    # Hapus folder temp jika ada bekas run sebelumnya
     if os.path.exists(local_model_path):
         shutil.rmtree(local_model_path)
     
-    # 1. Biarkan MLflow membuat struktur folder model di LOKAL dulu
+    # Generate struktur model MLflow di lokal
     mlflow.sklearn.save_model(model, local_model_path)
     
-    print("Mulai mengupload file model satu per satu (agar server aman)...")
+    print("Mulai mengupload file model satu per satu...")
     
-    # 2. Loop semua file di dalam folder tersebut dan upload satu per satu
+    # Loop upload dengan path y
     for root, dirs, files in os.walk(local_model_path):
         for filename in files:
-            # Path file asli di laptop/runner
             local_file = os.path.join(root, filename)
             
-            # Tentukan path tujuan di DagsHub (tetap di dalam folder 'model')
-            # Jika file ada di subfolder, kita harus jaga strukturnya
+            # Tentukan subfolder relatif
             relative_path = os.path.relpath(local_file, local_model_path)
-            dest_path_in_artifact = os.path.join("model", os.path.dirname(relative_path))
+            dir_name = os.path.dirname(relative_path)
             
-            # Koreksi string path agar bersih
-            if dest_path_in_artifact.endswith("."): 
-                dest_path_in_artifact = "model"
+            # LOGIKA BARU: Pastikan tidak ada trailing slash
+            if dir_name:
+                dest_path = os.path.join("model", dir_name)
+            else:
+                dest_path = "model" # File di root langsung ke 'model'
             
-            print(f"Mengupload: {filename} ke folder {dest_path_in_artifact}...")
+            print(f"Mengupload: {filename} ke folder artifact '{dest_path}'...")
             
-            # Upload file tunggal
-            mlflow.log_artifact(local_file, artifact_path=dest_path_in_artifact)
+            mlflow.log_artifact(local_file, artifact_path=dest_path)
             
-            # JEDA WAKTU (PENTING! Ini obat error 500)
+            # Jeda agar server tidak error 500
             time.sleep(5) 
             
     print("Semua file model berhasil diupload!")
@@ -113,7 +111,6 @@ with run_context as run:
     plt.savefig("confusion_matrix.png")
     plt.close()
     
-    print("Mengupload Confusion Matrix...")
     mlflow.log_artifact("confusion_matrix.png")
 
     print("Selesai! CI/CD Sukses.")
