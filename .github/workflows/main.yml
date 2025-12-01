@@ -28,6 +28,8 @@ jobs:
         MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
         MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
         MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+        MLFLOW_HTTP_REQUEST_MAX_RETRIES: 5
+        MLFLOW_HTTP_REQUEST_TIMEOUT: 120
       run: |
         # Masuk ke folder MLProject
         cd MLProject
